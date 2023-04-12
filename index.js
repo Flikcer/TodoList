@@ -1,193 +1,170 @@
-// Define some constants
-const folders = document.querySelector("#folders");
-const taskContainer = document.querySelector("#task-container");
+//simplified and contained in functions
 
-let activeFolder;
+//acquire list data entries from forms for new lists and list entries
+const listsContainer = document.querySelector("[data-lists]");
+const newListForm = document.querySelector("[data-new-list-form]");
+const newListInput = document.querySelector("[data-new-list-input]");
+const deleteListButton = document.querySelector("[data-delete-list-button]");
+const listDisplayContainer = document.querySelector(
+  "[data-list-display-container]"
+);
+const listTitleElement = document.querySelector("[data-list-title]");
+const listCountElement = document.querySelector("[data-list-count]");
+const tasksContainer = document.querySelector("[data-tasks]");
+const taskTemplate = document.getElementById("task-template");
+const newTaskForm = document.querySelector("[data-new-task-form]");
+const newTaskInput = document.querySelector("[data-new-task-input]");
+const clearCompleteTasksButton = document.querySelector(
+  "[data-clear-complete-tasks-button]"
+);
 
-// Create a function to generate unique IDs
-function generateID() {
-  return Math.random().toString().split(".").join("");
+//store in local storage for persistence and give name so it isnt overwritteen
+const LOCAL_STORAGE_LIST_KEY = "task.lists";
+const LOCAL_STORAGE_SELECTED_LIST_ID_KEY = "task.selectedListId";
+let lists = JSON.parse(localStorage.getItem(LOCAL_STORAGE_LIST_KEY)) || [];
+let selectedListId = localStorage.getItem(LOCAL_STORAGE_SELECTED_LIST_ID_KEY);
+
+//add event listener for clicks on the list container to modify and update data
+listsContainer.addEventListener("click", (e) => {
+  if (e.target.tagName.toLowerCase() === "li") {
+    selectedListId = e.target.dataset.listId;
+    saveAndRender();
+  }
+});
+
+//The functions for creating lists and tasks simply return objects with an id, name, and, in the case of tasks, a boolean value for completion
+tasksContainer.addEventListener("click", (e) => {
+  if (e.target.tagName.toLowerCase() === "input") {
+    const selectedList = lists.find((list) => list.id === selectedListId);
+    const selectedTask = selectedList.tasks.find(
+      (task) => task.id === e.target.id
+    );
+    selectedTask.complete = e.target.checked;
+    save();
+    renderTaskCount(selectedList);
+  }
+});
+
+//filter array with those of a complete boolean value of true
+clearCompleteTasksButton.addEventListener("click", (e) => {
+  const selectedList = lists.find((list) => list.id === selectedListId);
+  selectedList.tasks = selectedList.tasks.filter((task) => !task.complete);
+  saveAndRender();
+});
+
+//if delete clicked set list to null
+deleteListButton.addEventListener("click", (e) => {
+  lists = lists.filter((list) => list.id !== selectedListId);
+  selectedListId = null;
+  saveAndRender();
+});
+
+//prevent default refresh, then call createList on the new entered list name then push the new object to the lists
+newListForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const listName = newListInput.value;
+  if (listName == null || listName === "") return;
+  const list = createList(listName);
+  newListInput.value = null;
+  lists.push(list);
+  saveAndRender();
+});
+
+//upon submit, get the input, check is taskName is null
+//if not set the newtask to null, pass it the entered value and push it + render it
+newTaskForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const taskName = newTaskInput.value;
+  if (taskName == null || taskName === "") return;
+  const task = createTask(taskName);
+  newTaskInput.value = null;
+  const selectedList = lists.find((list) => list.id === selectedListId);
+  selectedList.tasks.push(task);
+  saveAndRender();
+});
+
+//take in the inputs and turn them into nested objects
+function createList(name) {
+  return { id: Date.now().toString(), name: name, tasks: [] };
+}
+function createTask(name) {
+  return { id: Date.now().toString(), name: name, complete: false };
 }
 
-// Define a class for folders
-class Folder {
-  constructor(title) {
-    this.id = generateID();
-    this.title = title;
-    this.tasks = [];
-  }
-
-  // Add a method to render the folder
-  render() {
-    const folder = document.createElement("div");
-    folder.classList.add("folder");
-    if (this === activeFolder) {
-      folder.classList.add("active");
-    }
-    folder.setAttribute("id", this.id);
-
-    const title = document.createElement("p");
-    title.textContent = this.title;
-    folder.appendChild(title);
-
-    const deleteButton = document.createElement("img");
-    deleteButton.classList.add("delete");
-    deleteButton.src = "./images/delete.svg";
-    deleteButton.addEventListener("click", () => this.delete());
-    folder.appendChild(deleteButton);
-
-    folder.addEventListener("click", () => {
-      activeFolder = this;
-      this.renderTasks();
-      Folder.renderFolders();
-    });
-
-    folders.appendChild(folder);
-  }
-
-  // Add a method to delete the folder
-  delete() {
-    const index = s.indexOf(this);
-    if (index !== -1) {
-      s.splice(index, 1);
-      Folder.renderFolders();
-    }
-  }
-
-  // Add a method to render the tasks for this folder
-  renderTasks() {
-    taskContainer.innerHTML = "";
-    this.tasks.forEach((task) => task.render());
-  }
-
-  // Add a static method to render all folders
-  static renderFolders() {
-    folders.innerHTML = "";
-    s.forEach((folder) => folder.render());
-  }
+//cobine the actions of the following functions or easier calling on single cases
+function saveAndRender() {
+  save();
+  render();
 }
 
-// Define a class for tasks
-class Task {
-  constructor(name, date, priority) {
-    this.id = generateID();
-    this.name = name;
-    this.date = date;
-    this.priority = priority;
-  }
+//set lists and tasks to local storage and stringify for JSON purposes
+function save() {
+  localStorage.setItem(LOCAL_STORAGE_LIST_KEY, JSON.stringify(lists));
+  localStorage.setItem(LOCAL_STORAGE_SELECTED_LIST_ID_KEY, selectedListId);
+}
 
-  // Add a method to render the task
-  render() {
-    const task = document.createElement("div");
-    task.classList.add("task");
-    task.setAttribute("id", this.id);
+// If there is no selected list, it sets the display property of the listDisplayContainer to "none" to hide it. Otherwise, it sets it to an empty string to show it.
+//If there is a selected list, the function sets the text of the listTitleElement to the name of the selected list, and then calls renderTaskCount() to display the number of incomplete tasks
+function render() {
+  clearElement(listsContainer);
+  renderLists();
 
-    const checkbox = document.createElement("input");
-    checkbox.classList.add("checkbox");
-    checkbox.type = "checkbox";
-    task.appendChild(checkbox);
-
-    const taskName = document.createElement("p");
-    taskName.textContent = this.name;
-    task.appendChild(taskName);
-
-    const taskInfo = document.createElement("div");
-    taskInfo.classList.add("task-info");
-    task.appendChild(taskInfo);
-
-    const taskDate = document.createElement("p");
-    taskDate.textContent = this.date;
-    taskInfo.appendChild(taskDate);
-
-    const taskPriority = document.createElement("div");
-    taskPriority.classList.add("badge");
-    taskPriority.textContent = this.priority;
-    taskInfo.appendChild(taskPriority);
-
-    const deleteButton = document.createElement("img");
-    deleteButton.classList.add("delete");
-    deleteButton.src = "./images/delete.svg";
-    deleteButton.addEventListener("click", () => this.delete());
-    taskInfo.appendChild(deleteButton);
-
-    const editButton = document.createElement("img");
-    editButton.classList.add("edit");
-    editButton.src = "./images/edit.svg";
-    editButton.addEventListener("click", () => this.edit());
-    taskInfo.appendChild(editButton);
-
-    taskContainer.appendChild(task);
-  }
-
-  // Add a method to delete the task
-  delete() {
-    const folder = s.find((folder) => folder.tasks.includes(this));
-    if (folder) {
-      folder.tasks = folder.tasks.filter((task) => task !== this);
-      folder.renderTasks();
-    }
-  }
-
-  // Add a method to edit the task
-  edit() {
-    const task = document.getElementById(this.id);
-    const taskName = task.querySelector("p");
-    const taskDate = task.querySelector(".task-info p");
-    const taskPriority = task.querySelector(".task-info .badge");
-
-    const nameInput = document.createElement("input");
-    nameInput.value = taskName.textContent;
-    taskName.replaceWith(nameInput);
-
-    const dateInput = document.createElement("input");
-    dateInput.type = "date";
-    dateInput.value = this.date;
-    taskDate.replaceWith(dateInput);
-
-    const priorityInput = document.createElement("select");
-    const priorities = ["Low", "Medium", "High"];
-    priorities.forEach((priority) => {
-      const option = document.createElement("option");
-      option.value = priority;
-      option.text = priority;
-      priorityInput.appendChild(option);
-    });
-    priorityInput.value = this.priority;
-    taskPriority.replaceWith(priorityInput);
-
-    const saveButton = document.createElement("img");
-    saveButton.classList.add("save");
-    saveButton.src = "./images/save.svg";
-    saveButton.addEventListener("click", () => {
-      this.name = nameInput.value;
-      this.date = dateInput.value;
-      this.priority = priorityInput.value;
-
-      taskName.textContent = this.name;
-      taskDate.textContent = this.date;
-      taskPriority.textContent = this.priority;
-
-      nameInput.replaceWith(taskName);
-      dateInput.replaceWith(taskDate);
-      priorityInput.replaceWith(taskPriority);
-    });
-    task.querySelector(".task-info").appendChild(saveButton);
+  const selectedList = lists.find((list) => list.id === selectedListId);
+  if (selectedListId == null) {
+    listDisplayContainer.style.display = "none";
+  } else {
+    listDisplayContainer.style.display = "";
+    listTitleElement.innerText = selectedList.name;
+    renderTaskCount(selectedList);
+    clearElement(tasksContainer);
+    renderTasks(selectedList);
   }
 }
 
-// Create some example folders and tasks
-const folder1 = new Folder("Work");
-const folder2 = new Folder("Personal");
+//for each task create the appropriate DOM elements
+function renderTasks(selectedList) {
+  selectedList.tasks.forEach((task) => {
+    const taskElement = document.importNode(taskTemplate.content, true);
+    const checkbox = taskElement.querySelector("input");
+    checkbox.id = task.id;
+    checkbox.checked = task.complete;
+    const label = taskElement.querySelector("label");
+    label.htmlFor = task.id;
+    label.append(task.name);
+    tasksContainer.appendChild(taskElement);
+  });
+}
 
-const task1 = new Task("Finish report", "2023-04-20", "High");
-const task2 = new Task("Buy groceries", "2023-04-15", "Medium");
-const task3 = new Task("Pay bills", "2023-04-18", "Low");
+//print the length of thenot complete filtered arr
+function renderTaskCount(selectedList) {
+  const incompleteTaskCount = selectedList.tasks.filter(
+    (task) => !task.complete
+  ).length;
+  const taskString = incompleteTaskCount === 1 ? "task" : "tasks";
+  listCountElement.innerText = `${incompleteTaskCount} ${taskString} remaining`;
+}
 
-folder1.tasks.push(task1);
-folder2.tasks.push(task2);
-folder2.tasks.push(task3);
+//For each list in the lists array, the function creates a new <li> element using document.createElement("li")
+function renderLists() {
+  lists.forEach((list) => {
+    const listElement = document.createElement("li");
+    listElement.dataset.listId = list.id;
+    listElement.classList.add("list-name");
+    listElement.innerText = list.name;
+    if (list.id === selectedListId) {
+      listElement.classList.add("active-list");
+    }
+    listsContainer.appendChild(listElement);
+  });
+}
 
-const s = [folder1, folder2];
+//remove all child elements from a parent
+//clear the list of tasks before rendering updated tasks
+function clearElement(element) {
+  while (element.firstChild) {
+    element.removeChild(element.firstChild);
+  }
+}
 
-// Render the folders and tasks
-Folder.renderFolders();
+//display lists
+render();
